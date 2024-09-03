@@ -1,0 +1,91 @@
+#include <Adafruit_ADS1X15.h>
+#include <WiFi.h>
+#include <Firebase_ESP_Client.h>
+#include <addons/TokenHelper.h>
+
+// Provide the RTDB payload printing info and other helper functions.
+#include <addons/RTDBHelper.h>
+Adafruit_ADS1115 ads;
+
+#define WIFI_SSID "pc"
+#define WIFI_PASSWORD "12345678"
+
+#define USER_EMAIL "jhonestiven.rodriguezvidal@gmail.com"
+#define USER_PASSWORD "3172162972Jhon."
+
+#define API_KEY "AIzaSyAYsgKrSydjNcloTFTgMP0mnG1dyRjq4ag"
+#define DATABASE_URL "https://test-agro-4-default-rtdb.firebaseio.com/"
+
+ 
+FirebaseData fbdo;
+FirebaseAuth auth;
+FirebaseConfig config;
+
+
+
+unsigned long long int adc0=0;
+unsigned long long int aux=0;
+void setup() {
+ Serial.begin(115200);
+ if (!ads.begin()) {
+    Serial.println("Failed to initialize ADS.");
+    while (1);
+  }
+
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  Serial.print("CONECTADO AL WIFI");
+  while(WiFi.status() != WL_CONNECTED)
+  {
+    Serial.print(".");
+    delay(300);
+  }
+
+    auth.user.email = USER_EMAIL;
+    auth.user.password = USER_PASSWORD;
+
+  config.api_key = API_KEY;
+   config.database_url = DATABASE_URL;
+   config.token_status_callback = tokenStatusCallback; // see addons/TokenHelper.h
+fbdo.setBSSLBufferSize(2048 /* Rx buffer size in bytes from 512 - 16384 */, 1024 /* Tx buffer size in bytes from 512 - 16384 */);
+
+ Firebase.begin(&config, &auth);
+  Firebase.reconnectWiFi(true);
+
+}
+
+float R2 = 98600;                 //Valor de la resistencia r2 para el termistor     
+float A = 0.4297391290E-3;
+float B = 2.545171819E-4; 
+float C = -0.03117188050E-7;
+
+float termistor(int16_t RawADC) {
+   long resistencia=0;  
+   float temp=0.0;
+   resistencia = R2*((26240.0 / RawADC) - 1); //Calculamos R1 mediante la lectura analogica ///26880
+   temp = log(resistencia);
+   temp = 1 / (A + (B * temp) + (C * temp * temp * temp));
+   temp = temp - 273.15;  // Kelvin a grados centigrados                     
+   return temp;
+  }
+
+float T=0.0;
+int muestreo=100.0;
+void loop() {
+  adc0=0;
+  for (int i=0; i<muestreo;i++){
+    adc0 = ads.readADC_SingleEnded(0)+adc0;  
+  }
+  adc0=adc0/muestreo;
+  Serial.println(adc0);
+  T= termistor(adc0);
+  Serial.print("Temperatura:");
+  Serial.println(T);
+  
+  if(Firebase.RTDB.setFloat(&fbdo,"temperatura",T)){
+    Serial.println("ok");
+  }
+  else{
+    Serial.println("Error");
+  }
+
+}
